@@ -1,0 +1,16 @@
+module.exports = {
+  content: [
+    './app/**/*.{js,ts,jsx,tsx}',
+    './components/**/*.{js,ts,jsx,tsx}',
+    './lib/**/*.{js,ts,jsx,tsx}',
+  ],
+  safelist: [
+    {
+      pattern: /w-\[\d+%\]/,
+    },
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}

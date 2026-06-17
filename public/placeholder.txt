@@ -1,0 +1,9 @@
+apple-icon.png
+icon-dark-32*32.png
+icon-light-32*32.png
+icon.svg
+placeholder-logo.png
+placeholder-logo.svg
+placeholder-user.jpg
+placeholder.jpg
+placeholder.svg
