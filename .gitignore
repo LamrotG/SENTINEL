@@ -1,16 +1,9 @@
-# Internal ignores
-
 # Environment variables
 .env
 .env.local
 .env.development.local
 .env.production.local
 .env.test.local
-
-# Common ignores
-node_modules
-.next/
-.DS_Store
 
 # Dependencies
 node_modules/
@@ -35,3 +28,9 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
+
+# Project-specific
+docs/login-info.md
+scripts/
+migrate.sql
+seed-cases.ts

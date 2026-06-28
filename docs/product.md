@@ -64,18 +64,6 @@ Sentinel should feel:
 * Precise
 * Data-driven
 * Enterprise-grade
-
-Never feel:
-
-* Futuristic
-* Gaming-inspired
-* Military-themed
-* Hacker-themed
-* Sci-fi
-* Cyberpunk
-
-The product should look like software used daily by professional investigators.
-
 ---
 
 # Design Principles
@@ -102,11 +90,6 @@ Evidence is the foundation of every conclusion.
 
 ---
 
-# Visual Style Guide
-
-## Theme
-
-Dark mode only.
 
 ## Aesthetic
 
@@ -119,91 +102,6 @@ Inspired by:
 * Digital forensics applications
 * Professional case management systems
 
-Avoid:
-
-* Neon effects
-* Glow effects
-* RGB accents
-* Hacker aesthetics
-* Excessive gradients
-
----
-
-## Color System
-
-Background:
-Near-black charcoal
-
-Surface:
-Dark slate gray
-
-Borders:
-Subtle low-contrast separators
-
-Primary Accent:
-Blue
-
-Secondary Accent:
-Indigo
-
-Success:
-Green
-
-Warning:
-Amber
-
-Danger:
-Red
-
-Information:
-Blue
-
-Confidence:
-Purple
-
----
-
-## Typography
-
-Style:
-Modern sans-serif
-
-Characteristics:
-
-* Highly readable
-* Compact
-* Professional
-
-Hierarchy:
-
-* Page Titles
-* Section Titles
-* Labels
-* Metadata
-* Body Text
-
-Avoid oversized typography.
-
----
-
-## Layout Rules
-
-Desktop-first.
-
-Designed for:
-
-* Analysts
-* Large monitors
-* Multi-panel workflows
-
-Preferred layout:
-
-* Left navigation
-* Top command bar
-* Main content area
-* Context panels
-
-Allow multiple panels to be visible simultaneously.
 
 ---
 
@@ -254,7 +152,6 @@ An infinite investigative canvas where users can:
 * Organize findings
 * Build narratives
 
-The workspace should feel like a digital evolution of a real detective evidence board.
 
 Objects include:
 
@@ -270,133 +167,6 @@ Objects include:
 * Theory Cards
 
 Users can visually connect objects with relationship lines.
-
----
-
-# Realistic Data Guidelines
-
-Every screen should contain realistic investigative content.
-
-Never use:
-
-* John Doe
-* Jane Smith
-* Test User
-* Example Company
-* Sample Data
-
-Use believable investigation scenarios.
-
----
-
-## Example Case
-
-Case Name:
-Business Email Compromise — EastGate Logistics
-
-Case ID:
-CAS-2026-0148
-
-Status:
-Active Investigation
-
-Priority:
-High
-
-Lead Investigator:
-Sarah Chen
-
-Created:
-March 12, 2026
-
----
-
-## Example Entities
-
-People:
-
-* Sarah Chen
-* Marcus Reed
-* Elena Torres
-* David Holt
-
-Organizations:
-
-* EastGate Logistics
-* Horizon Financial Group
-* NorthStar Imports
-
-Domains:
-
-* eastgate-logistics.com
-* secure-eastgate-login.com
-* horizon-payments.net
-
-IPs:
-
-* 185.233.81.14
-* 91.203.17.22
-* 103.122.54.91
-
-Emails:
-
-* [finance@eastgate-logistics.com](mailto:finance@eastgate-logistics.com)
-* [operations@northstarimports.com](mailto:operations@northstarimports.com)
-* [support@secure-eastgate-login.com](mailto:support@secure-eastgate-login.com)
-
-Wallets:
-
-* BTC Wallet IDs
-* Ethereum Wallet IDs
-
-Devices:
-
-* Employee Laptop
-* Android Device
-* VPN Gateway
-
----
-
-## Example Evidence
-
-* Phishing_Email_March12.eml
-* VPN_Login_Records.csv
-* Invoice_Request.pdf
-* Funds_Transfer_Confirmation.png
-* Endpoint_Forensics_Report.pdf
-* Chat_Export.zip
-* Browser_History_Report.pdf
-
----
-
-# Confidence Model
-
-Sentinel tracks confidence levels.
-
-Confidence indicates how strongly evidence supports a relationship or conclusion.
-
-Low:
-0–39%
-
-Medium:
-40–69%
-
-High:
-70–100%
-
-Example:
-
-Relationship:
-Marcus Reed → secure-eastgate-login.com
-
-Confidence:
-82%
-
-Supporting Evidence:
-
-* Registration record
-* Email correlation
-* Login activity
 
 ---
 
@@ -435,39 +205,6 @@ Common actions:
 * Compare evidence
 
 The platform should encourage exploration and discovery.
-
----
-
-# Content Tone
-
-Professional.
-
-Objective.
-
-Evidence-based.
-
-Avoid emotional language.
-
-Use terminology commonly found in investigations and intelligence analysis.
-
-Examples:
-
-Good:
-
-* Evidence Linked
-* Related Entities
-* Investigation Status
-* Confidence Score
-* Findings
-* Correlation Detected
-
-Avoid:
-
-* Hacker Alert
-* Threat Destroyed
-* Enemy Activity
-* Mission Control
-* Cyber Attack Radar
 
 ---
 

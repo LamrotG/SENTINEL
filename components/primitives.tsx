@@ -20,6 +20,7 @@ export function StatusBadge({ status }: { status: CaseStatus }) {
     Active: 'bg-success/15 text-success border-success/30',
     Suspended: 'bg-warning/15 text-warning border-warning/30',
     Closed: 'bg-muted text-muted-foreground border-border',
+    Archived: 'bg-muted text-muted-foreground/60 border-border',
   }
   return (
     <span
@@ -110,7 +111,8 @@ export function RiskScore({ score }: { score: number }) {
     <div className="flex items-center gap-2">
       <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
         <div
-          className={cn('h-full rounded-full', level.bar, `w-[${score}%]`)}
+          className={cn('h-full rounded-full', level.bar)}
+          style={{ width: `${score}%` }}
         />
       </div>
       <span className={cn('w-8 text-xs font-medium tabular-nums', level.color)}>
@@ -133,7 +135,8 @@ export function ConfidenceBar({
     <div className="flex items-center gap-2">
       <div className="h-1.5 w-full min-w-16 overflow-hidden rounded-full bg-muted">
         <div
-          className={`h-full rounded-full bg-confidence w-[${value}%]`}
+          className="h-full rounded-full bg-confidence"
+          style={{ width: `${value}%` }}
         />
       </div>
       {showLabel && (

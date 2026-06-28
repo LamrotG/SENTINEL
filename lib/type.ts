@@ -1,4 +1,4 @@
-export type CaseStatus = 'Active' | 'Suspended' | 'Closed'
+export type CaseStatus = 'Active' | 'Suspended' | 'Closed' | 'Archived'
 export type Priority = 'Critical' | 'High' | 'Medium' | 'Low'
 
 export type EntityType =
@@ -89,4 +89,121 @@ export interface Theory {
   confidence: number
   supporting: string[]
   contradicting: string[]
+}
+
+// ── User & Collaboration Types ──────────────────────────
+
+export interface SentinelUser {
+  id: string
+  username: string
+  fullName: string
+  department: string
+  position: string
+  joinedYear: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type CaseRole =
+  | 'Lead Investigator'
+  | 'Investigator'
+  | 'Intelligence Analyst'
+  | 'Digital Forensics Analyst'
+  | 'Evidence Manager'
+  | 'Reviewer'
+  | 'Observer'
+
+export type CasePermission =
+  | 'view_case'
+  | 'edit_case'
+  | 'add_evidence'
+  | 'edit_evidence'
+  | 'delete_evidence'
+  | 'manage_entities'
+  | 'manage_timeline'
+  | 'generate_reports'
+  | 'invite_members'
+  | 'manage_settings'
+
+export const ROLE_DEFAULT_PERMISSIONS: Record<CaseRole, CasePermission[]> = {
+  'Lead Investigator': [
+    'view_case', 'edit_case', 'add_evidence', 'edit_evidence', 'delete_evidence',
+    'manage_entities', 'manage_timeline', 'generate_reports', 'invite_members', 'manage_settings',
+  ],
+  'Investigator': [
+    'view_case', 'edit_case', 'add_evidence', 'edit_evidence',
+    'manage_entities', 'manage_timeline', 'generate_reports',
+  ],
+  'Intelligence Analyst': [
+    'view_case', 'edit_case', 'manage_entities', 'manage_timeline', 'generate_reports',
+  ],
+  'Digital Forensics Analyst': [
+    'view_case', 'add_evidence', 'edit_evidence', 'manage_entities', 'manage_timeline',
+  ],
+  'Evidence Manager': [
+    'view_case', 'add_evidence', 'edit_evidence', 'delete_evidence',
+  ],
+  'Reviewer': ['view_case', 'generate_reports'],
+  'Observer': ['view_case'],
+}
+
+export interface CaseMember {
+  id: string
+  caseId: string
+  userId: string
+  role: CaseRole
+  permissions: CasePermission[]
+  joinedAt: string
+  user?: SentinelUser
+}
+
+export type InvitationType = 'collaborator' | 'viewer'
+export type InvitationStatus = 'pending' | 'accepted' | 'declined'
+
+export interface CaseInvitation {
+  id: string
+  caseId: string
+  inviterId: string
+  inviteeId: string
+  type: InvitationType
+  role?: CaseRole
+  permissions: CasePermission[]
+  status: InvitationStatus
+  createdAt: string
+  respondedAt?: string
+  inviter?: SentinelUser
+  invitee?: SentinelUser
+  case?: { id: string; title: string }
+}
+
+export interface CaseViewAccess {
+  id: string
+  caseId: string
+  userId: string
+  grantedBy: string
+  createdAt: string
+  user?: SentinelUser
+}
+
+export type NotificationType =
+  | 'collab_invitation'
+  | 'view_invitation'
+  | 'invitation_accepted'
+  | 'invitation_declined'
+  | 'removed_from_case'
+  | 'permission_updated'
+  | 'case_update'
+
+export interface Notification {
+  id: string
+  userId: string
+  type: NotificationType
+  title: string
+  body?: string
+  caseId?: string
+  actorId?: string
+  link?: string
+  read: boolean
+  createdAt: string
+  actor?: SentinelUser
 }

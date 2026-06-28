@@ -1,3 +1,6 @@
+'use client'
+
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
   ArrowUpRight,
@@ -17,16 +20,15 @@ import {
   SectionTitle,
   StatusBadge,
 } from '@/components/primitives'
-import { activity, alerts, cases, stats } from '@/lib/data'
+import { activity, alerts } from '@/lib/data'
 import type { ActivityItem } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { fmtDate } from '@/lib/utils'
 
-const statCards = [
-  { label: 'Total Cases', value: stats.totalCases, icon: FolderClosed, tone: 'text-foreground' },
-  { label: 'Active Investigations', value: stats.activeInvestigations, icon: Boxes, tone: 'text-success' },
-  { label: 'High Priority', value: stats.highPriority, icon: TriangleAlert, tone: 'text-warning' },
-  { label: 'Closed Cases', value: stats.closedCases, icon: FileText, tone: 'text-muted-foreground' },
-]
+type CaseRow = {
+  id: string; title: string; category: string; status: string; priority: string;
+  lead_name: string; created_at: string; updated_at: string; my_role?: string;
+}
 
 const activityIcon: Record<ActivityItem['type'], typeof Boxes> = {
   evidence: Boxes,
@@ -37,6 +39,35 @@ const activityIcon: Record<ActivityItem['type'], typeof Boxes> = {
 }
 
 export default function DashboardPage() {
+  const [cases, setCases] = useState<CaseRow[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/cases')
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => setCases(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const activeCases = cases.filter(
+    (c) => c.status === 'Active' || c.priority === 'Critical' || c.priority === 'High',
+  )
+
+  const stats = {
+    totalCases: cases.length,
+    activeInvestigations: cases.filter((c) => c.status === 'Active').length,
+    highPriority: cases.filter((c) => c.priority === 'Critical' || c.priority === 'High').length,
+    closedCases: cases.filter((c) => c.status === 'Closed').length,
+  }
+
+  const statCards = [
+    { label: 'Total Cases', value: stats.totalCases, icon: FolderClosed, tone: 'text-foreground' },
+    { label: 'Active Investigations', value: stats.activeInvestigations, icon: Boxes, tone: 'text-success' },
+    { label: 'High Priority', value: stats.highPriority, icon: TriangleAlert, tone: 'text-warning' },
+    { label: 'Closed Cases', value: stats.closedCases, icon: FileText, tone: 'text-muted-foreground' },
+  ]
+
   return (
     <div className="h-full overflow-y-auto scrollbar-thin">
       <PageHeader
@@ -56,7 +87,7 @@ export default function DashboardPage() {
                   <Icon className={cn('size-4', s.tone)} aria-hidden />
                 </div>
                 <p className={cn('mt-3 text-3xl font-semibold tabular-nums', s.tone)}>
-                  {s.value}
+                  {loading ? '–' : s.value}
                 </p>
               </Panel>
             )
@@ -69,36 +100,38 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <SectionTitle>Active Cases</SectionTitle>
               <span className="text-xs text-muted-foreground">
-                {cases.length} cases
+                {activeCases.length} active
               </span>
             </div>
-            <ul className="divide-y divide-border">
-              {cases.map((c) => (
-                <li key={c.id}>
-                  <Link
-                    href={`/cases/${c.id}`}
-                    className="group flex items-center gap-4 px-4 py-3.5 transition-colors hover:bg-accent/50"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {c.id}
-                        </span>
-                        <StatusBadge status={c.status} />
-                        <PriorityBadge priority={c.priority} />
+            {loading ? (
+              <p className="px-4 py-6 text-sm text-muted-foreground">Loading…</p>
+            ) : activeCases.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-muted-foreground">No active cases.</p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {activeCases.map((c) => (
+                  <li key={c.id}>
+                    <Link
+                      href={`/cases/${c.id}`}
+                      className="group flex items-center gap-4 px-4 py-3.5 transition-colors hover:bg-accent/50"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs text-muted-foreground">{c.id}</span>
+                          <StatusBadge status={c.status as 'Active'} />
+                          <PriorityBadge priority={c.priority as 'High'} />
+                        </div>
+                        <p className="mt-1 truncate text-sm font-medium group-hover:text-primary">{c.title}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Lead: {c.lead_name} · Updated {fmtDate(c.updated_at)}
+                        </p>
                       </div>
-                      <p className="mt-1 truncate text-sm font-medium group-hover:text-primary">
-                        {c.title}
-                      </p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        Lead: {c.lead} · Updated {c.updatedAt}
-                      </p>
-                    </div>
-                    <ArrowUpRight className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
+                      <ArrowUpRight className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Panel>
 
           {/* Alerts + Activity */}
@@ -123,12 +156,8 @@ export default function DashboardPage() {
                     />
                     <div className="min-w-0">
                       <p className="text-sm font-medium">{a.title}</p>
-                      <p className="text-xs text-muted-foreground text-pretty">
-                        {a.detail}
-                      </p>
-                      <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-                        {a.caseId} · {a.at}
-                      </p>
+                      <p className="text-xs text-muted-foreground text-pretty">{a.detail}</p>
+                      <p className="mt-1 font-mono text-[11px] text-muted-foreground">{a.caseId} · {a.at}</p>
                     </div>
                   </li>
                 ))}
@@ -150,14 +179,10 @@ export default function DashboardPage() {
                       <div className="min-w-0">
                         <p className="text-sm text-pretty">
                           <span className="font-medium">{item.actor}</span>{' '}
-                          <span className="text-muted-foreground">
-                            {item.action}
-                          </span>{' '}
+                          <span className="text-muted-foreground">{item.action}</span>{' '}
                           <span className="font-medium">{item.target}</span>
                         </p>
-                        <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                          {item.caseId} · {item.at}
-                        </p>
+                        <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">{item.caseId} · {item.at}</p>
                       </div>
                     </li>
                   )

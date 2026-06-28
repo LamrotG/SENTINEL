@@ -1,12 +1,14 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { X } from 'lucide-react'
 import {
   EntityGlyph,
   getEntityMeta,
   RiskScore,
 } from '@/components/primitives'
-import { entities, evidence } from '@/lib/data'
+import { entities as allEntities, evidence } from '@/lib/data'
+import { useCase } from '@/lib/case-context'
 import type { Entity, EntityType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -22,21 +24,28 @@ const typeOptions: (EntityType | 'all')[] = [
 ]
 
 export function EntityIntelligence() {
+  const { activeCaseId } = useCase()
+  const initialEntities = allEntities.filter((e) => e.caseIds.includes(activeCaseId))
+  const [entitiesData, setEntitiesData] = useState<Entity[]>(initialEntities)
   const [typeFilter, setTypeFilter] = useState<EntityType | 'all'>('all')
-  const [selectedId, setSelectedId] = useState<string>('ent-domain-spoof')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  function updateEntity(id: string, patch: Partial<Entity>) {
+    setEntitiesData((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)))
+  }
 
   const filtered = useMemo(
     () =>
-      [...entities]
+      [...entitiesData]
         .filter((e) => typeFilter === 'all' || e.type === typeFilter)
         .sort((a, b) => b.riskScore - a.riskScore),
-    [typeFilter],
+    [typeFilter, entitiesData],
   )
 
-  const selected = filtered.find((e) => e.id === selectedId) ?? filtered[0] ?? null
+  const selected = selectedId ? filtered.find((e) => e.id === selectedId) ?? null : null
 
   const relatedEntities = selected
-    ? entities
+    ? entitiesData
         .filter(
           (e) =>
             e.id !== selected.id &&
@@ -48,6 +57,10 @@ export function EntityIntelligence() {
   const linkedEvidence = selected
     ? evidence.filter((ev) => ev.linkedEntityIds.includes(selected.id))
     : []
+
+  function handleSelect(id: string) {
+    setSelectedId((prev) => (prev === id ? null : id))
+  }
 
   return (
     <div className="flex h-full">
@@ -78,19 +91,15 @@ export function EntityIntelligence() {
                 <th className="px-4 py-2.5 font-medium">Entity</th>
                 <th className="px-4 py-2.5 font-medium">Type</th>
                 <th className="px-4 py-2.5 font-medium">Risk Score</th>
-                <th className="hidden px-4 py-2.5 font-medium lg:table-cell">
-                  Connections
-                </th>
-                <th className="hidden px-4 py-2.5 font-medium lg:table-cell">
-                  Cases
-                </th>
+                <th className="hidden px-4 py-2.5 font-medium lg:table-cell">Connections</th>
+                <th className="hidden px-4 py-2.5 font-medium lg:table-cell">Cases</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.map((e) => (
                 <tr
                   key={e.id}
-                  onClick={() => setSelectedId(e.id)}
+                  onClick={() => handleSelect(e.id)}
                   className={cn(
                     'cursor-pointer transition-colors hover:bg-accent/40',
                     selected?.id === e.id && 'bg-accent/60',
@@ -101,9 +110,7 @@ export function EntityIntelligence() {
                       <EntityGlyph type={e.type} />
                       <div className="min-w-0">
                         <p className="truncate font-medium">{e.label}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {e.subLabel}
-                        </p>
+                        <p className="truncate text-xs text-muted-foreground">{e.subLabel}</p>
                       </div>
                     </div>
                   </td>
@@ -135,27 +142,42 @@ export function EntityIntelligence() {
         </div>
       </div>
 
-      {/* Detail */}
-      <div className="w-96 shrink-0 overflow-y-auto scrollbar-thin border-l border-border bg-card">
-        <div className="border-b border-border px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Entity Detail
-          </p>
-        </div>
-        {selected ? (
+      {/* Detail — only when selected */}
+      {selected && (
+        <div className="w-96 shrink-0 overflow-y-auto scrollbar-thin border-l border-border bg-card">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Entity Detail
+            </p>
+            <button
+              type="button"
+              onClick={() => setSelectedId(null)}
+              className="text-muted-foreground hover:text-foreground"
+              aria-label="Close detail"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
           <div className="space-y-5 p-4">
             <div className="flex items-start gap-3">
               <EntityGlyph type={selected.type} className="size-11" />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   {getEntityMeta(selected.type).label}
                 </p>
-                <p className="text-sm font-semibold text-pretty">
-                  {selected.label}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {selected.subLabel}
-                </p>
+                <input
+                  value={selected.label}
+                  onChange={(e) => updateEntity(selected.id, { label: e.target.value })}
+                  aria-label="Entity name"
+                  className="w-full bg-transparent text-sm font-semibold outline-none focus:border-b focus:border-ring"
+                />
+                <input
+                  value={selected.subLabel ?? ''}
+                  onChange={(e) => updateEntity(selected.id, { subLabel: e.target.value })}
+                  aria-label="Entity description"
+                  placeholder="Add description…"
+                  className="w-full bg-transparent text-xs text-muted-foreground outline-none placeholder:text-muted-foreground/40 focus:border-b focus:border-ring"
+                />
               </div>
             </div>
 
@@ -166,7 +188,6 @@ export function EntityIntelligence() {
               <RiskScore score={selected.riskScore} />
             </div>
 
-            {/* Relationship mini-map */}
             <div>
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Relationship Map
@@ -174,7 +195,6 @@ export function EntityIntelligence() {
               <RelationshipMap center={selected} related={relatedEntities} />
             </div>
 
-            {/* Metadata */}
             <div>
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Metadata
@@ -183,13 +203,19 @@ export function EntityIntelligence() {
                 {Object.entries(selected.metadata).map(([k, v]) => (
                   <div key={k} className="flex justify-between gap-3 text-xs">
                     <dt className="text-muted-foreground">{k}</dt>
-                    <dd className="text-right font-medium">{v}</dd>
+                    <dd>
+                      <input
+                        value={v}
+                        onChange={(e) => updateEntity(selected.id, { metadata: { ...selected.metadata, [k]: e.target.value } })}
+                        aria-label={k}
+                        className="w-full bg-transparent text-right font-medium outline-none focus:border-b focus:border-ring"
+                      />
+                    </dd>
                   </div>
                 ))}
               </dl>
             </div>
 
-            {/* Connected entities */}
             <div>
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Connected Entities · {relatedEntities.length}
@@ -211,7 +237,6 @@ export function EntityIntelligence() {
               </ul>
             </div>
 
-            {/* Evidence links */}
             <div>
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Evidence Links · {linkedEvidence.length}
@@ -228,16 +253,12 @@ export function EntityIntelligence() {
                   ))}
                 </ul>
               ) : (
-                <p className="text-xs text-muted-foreground">
-                  No evidence linked.
-                </p>
+                <p className="text-xs text-muted-foreground">No evidence linked.</p>
               )}
             </div>
           </div>
-        ) : (
-          <p className="p-4 text-sm text-muted-foreground">No entity selected.</p>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
