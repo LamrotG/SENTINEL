@@ -2,7 +2,7 @@
 
 Sentinel is a cybercrime investigation and intelligence platform designed for analysts, forensic teams, and security investigators to manage cases, connect digital evidence, and reconstruct complex cyber incidents through a visual investigation workspace.
 
-###🧠 Product Overview
+### 🧠 Product Overview
 
 Sentinel transforms fragmented investigative data into a structured intelligence environment.
 
@@ -16,9 +16,9 @@ Instead of working across spreadsheets, logs, documents, and disconnected tools,
 
 The platform is designed to support both structured case management and open-ended investigative thinking.
 
-###🔍 Core Capabilities
+### 🔍 Core Capabilities
 
-###📁 Case Management
+### 📁 Case Management
 
 Each investigation is structured as a case with controlled access.
 -Case creation and assignment
@@ -26,7 +26,7 @@ Each investigation is structured as a case with controlled access.
 -Lead investigator control
 -Secure case-level permissions
 
-###🧩 Evidence System
+### 🧩 Evidence System
 
 Centralized evidence storage and analysis.
 -Upload and manage evidence files
@@ -34,7 +34,7 @@ Centralized evidence storage and analysis.
 -Inspect metadata and relationships
 -Edit and update evidence after creation
 
-###🕸️ Entity Intelligence
+### 🕸️ Entity Intelligence
 
 Tracks and connects all investigation entities:
 -People
@@ -46,7 +46,7 @@ Tracks and connects all investigation entities:
 
 Each entity is connected through relationships and shared evidence.
 
-###🧭 Investigation Workspace (Core Feature)
+### 🧭 Investigation Workspace (Core Feature)
 
 A visual intelligence canvas for investigation building.
 
@@ -59,7 +59,7 @@ Investigators can:
 
 This replaces traditional static dashboards with an interactive investigation environment.
 
-⏱️ Timeline Reconstruction
+### ⏱️ Timeline Reconstruction
 
 Rebuild incidents step-by-step:
 -Chronological event mapping
@@ -67,7 +67,7 @@ Rebuild incidents step-by-step:
 -Entity involvement tracking
 -Filtering by case context
 
-###📊 Reporting System
+### 📊 Reporting System
 
 Structured intelligence reporting:
 -Generate case reports
@@ -75,7 +75,7 @@ Structured intelligence reporting:
 -Export reports as shareable documents
 -Present investigations in view-only mode
 
-###🔐 Access Control System
+### 🔐 Access Control System
 
 Sentinel enforces strict case-based security:
 
@@ -84,7 +84,7 @@ Sentinel enforces strict case-based security:
 -Role-based access (investigator, analyst, reviewer, viewer)
 -View-only sharing mode for external stakeholders
 
-###🔔 Notifications System
+### 🔔 Notifications System
 
 Real-time investigation updates:
 
@@ -93,7 +93,7 @@ Real-time investigation updates:
 -Activity tracking across cases
 -Secure notification previews
 
-###🧱 Design Philosophy
+### 🧱 Design Philosophy
 
 Sentinel is built as a professional intelligence platform, not a generic dashboard.
 
@@ -107,7 +107,7 @@ Sentinel is built as a professional intelligence platform, not a generic dashboa
 
 The interface is designed to feel like real-world cybercrime and intelligence analysis software.
 
-###🎯 Key Differentiator
+### 🎯 Key Differentiator
 
 Unlike traditional tools, Sentinel combines:
 -Case management
@@ -116,7 +116,7 @@ Unlike traditional tools, Sentinel combines:
 -Timeline reconstruction
 -Visual investigative reasoning into a single unified intelligence workspace.
 
-###🧭 Product Vision
+### 🧭 Product Vision
 
 Sentinel is built to simulate how real-world investigators think:
 
