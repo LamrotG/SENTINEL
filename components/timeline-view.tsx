@@ -1,94 +1,97 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
-import {
-  Activity,
-  ArrowLeftRight,
-  ChevronLeft,
-  ChevronRight,
-  KeyRound,
-  Radio,
-  Server,
-  X,
-} from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { ArrowUpRight, MapPin } from 'lucide-react'
 import { EntityGlyph, EvidenceTypeBadge } from '@/components/primitives'
-import { getEntity, getEvidence, timelineEvents as initialTimeline } from '@/lib/data'
+import { SidebarPanelHeader, CollapsedPanelRail } from '@/components/sidebar-panel-header'
+import { getEntity } from '@/lib/data'
 import { useCase } from '@/lib/case-context'
-import type { TimelineEvent } from '@/lib/type'
+import { useResizablePanel } from '@/lib/use-resizable-panel'
+import { getEventTypeMeta } from '@/lib/event-types'
+import type { CaseEvent, Evidence } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-const categoryMeta: Record<
-  TimelineEvent['category'],
-  { icon: typeof Activity; color: string; label: string }
-> = {
-  access: { icon: KeyRound, color: 'text-warning', label: 'Access' },
-  communication: { icon: Radio, color: 'text-info', label: 'Communication' },
-  transaction: { icon: ArrowLeftRight, color: 'text-danger', label: 'Transaction' },
-  system: { icon: Server, color: 'text-muted-foreground', label: 'System' },
-  detection: { icon: Activity, color: 'text-confidence', label: 'Detection' },
-}
-
-const categories = Object.keys(categoryMeta) as TimelineEvent['category'][]
-
-const MIN_FILTER_W = 180
-const MAX_FILTER_W = 320
+const COLLAPSED_FILTER_W = 40
 const DEFAULT_FILTER_W = 224
+
+function mapRow(r: Record<string, unknown>): CaseEvent {
+  return {
+    id: r.id as string,
+    title: r.title as string,
+    description: (r.description as string) ?? '',
+    caseId: r.case_id as string,
+    entityIds: (r.entity_ids as string[]) ?? [],
+    evidenceIds: (r.evidence_ids as string[]) ?? [],
+    eventType: (r.event_type as string) ?? 'other',
+    occurredAt: r.occurred_at as string,
+    location: (r.location as string) ?? '',
+    tags: (r.tags as string[]) ?? [],
+    notes: (r.notes as string) ?? '',
+  }
+}
 
 export function TimelineView() {
   const { activeCaseId } = useCase()
-  const [events, setEvents] = useState<TimelineEvent[]>(() =>
-    initialTimeline.filter((e) => e.caseId === activeCaseId)
-  )
-  const [catFilter, setCatFilter] = useState<TimelineEvent['category'][]>([])
+  const router = useRouter()
+  const [events, setEvents] = useState<CaseEvent[]>([])
+  const [caseEvidence, setCaseEvidence] = useState<Evidence[]>([])
+  const [loading, setLoading] = useState(true)
+  const [catFilter, setCatFilter] = useState<string[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  function updateEvent(id: string, patch: Partial<TimelineEvent>) {
-    setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)))
-  }
-  const [filtersCollapsed, setFiltersCollapsed] = useState(false)
-  const [filterWidth, setFilterWidth] = useState(DEFAULT_FILTER_W)
-  const resizing = useRef(false)
+  const { containerRef, currentWidth, collapsed, setCollapsed, startResize } = useResizablePanel({
+    collapsedWidth: COLLAPSED_FILTER_W,
+    defaultWidth: DEFAULT_FILTER_W,
+  })
 
-  const startResize = useCallback((e: React.PointerEvent) => {
-    e.preventDefault()
-    resizing.current = true
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-    const onMove = (ev: PointerEvent) => {
-      if (!resizing.current) return
-      setFilterWidth(Math.min(MAX_FILTER_W, Math.max(MIN_FILTER_W, ev.clientX)))
-    }
-    const onUp = () => {
-      resizing.current = false
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-      document.removeEventListener('pointermove', onMove)
-      document.removeEventListener('pointerup', onUp)
-    }
-    document.addEventListener('pointermove', onMove)
-    document.addEventListener('pointerup', onUp)
-  }, [])
+  useEffect(() => {
+    if (!activeCaseId) return
+    setLoading(true)
+    setSelectedId(null)
+    fetch(`/api/events?caseId=${encodeURIComponent(activeCaseId)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => setEvents((Array.isArray(rows) ? rows : []).map(mapRow)))
+      .catch(() => setEvents([]))
+      .finally(() => setLoading(false))
+
+    fetch(`/api/evidence?caseId=${encodeURIComponent(activeCaseId)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) =>
+        setCaseEvidence(
+          (Array.isArray(rows) ? rows : []).map((r) => ({
+            id: r.id,
+            name: r.name,
+            type: r.type,
+            source: r.source ?? '',
+            addedAt: r.added_at ?? '',
+            size: r.size ?? '',
+            tags: r.tags ?? [],
+            confidence: r.confidence ?? 0,
+            caseId: r.case_id,
+            linkedEntityIds: r.linked_entity_ids ?? [],
+            summary: r.summary ?? '',
+          })),
+        ),
+      )
+      .catch(() => setCaseEvidence([]))
+  }, [activeCaseId])
+
+  const usedTypes = useMemo(() => Array.from(new Set(events.map((e) => e.eventType))), [events])
 
   const filtered = useMemo(
-    () =>
-      catFilter.length
-        ? events.filter((e) => catFilter.includes(e.category))
-        : events,
+    () => (catFilter.length ? events.filter((e) => catFilter.includes(e.eventType)) : events),
     [catFilter, events],
   )
 
   const selected = selectedId ? filtered.find((e) => e.id === selectedId) ?? null : null
-  const selEntities = selected
-    ? selected.entityIds.map(getEntity).filter(Boolean)
-    : []
+  const selEntities = selected ? selected.entityIds.map(getEntity).filter(Boolean) : []
   const selEvidence = selected
-    ? selected.evidenceIds.map(getEvidence).filter(Boolean)
+    ? selected.evidenceIds.map((id) => caseEvidence.find((e) => e.id === id)).filter(Boolean)
     : []
 
-  function toggleCat(c: TimelineEvent['category']) {
-    setCatFilter((prev) =>
-      prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c],
-    )
+  function toggleCat(c: string) {
+    setCatFilter((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]))
   }
 
   function handleSelect(id: string) {
@@ -97,102 +100,48 @@ export function TimelineView() {
 
   return (
     <div className="flex h-full">
-      {/* Filters — collapsible + resizable */}
-      {!filtersCollapsed && (
+      {collapsed ? (
+        <CollapsedPanelRail label="Filters" onExpand={() => setCollapsed(false)} />
+      ) : (
         <div
-          className="relative shrink-0 overflow-y-auto scrollbar-thin border-r border-border bg-card p-4"
-          style={{ width: filterWidth }}
+          ref={containerRef}
+          className="relative flex shrink-0 flex-col border-r border-border bg-card"
+          style={{ width: currentWidth }}
         >
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Filters
-          </p>
-          <div className="mt-4">
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              Event Type
-            </p>
+          <SidebarPanelHeader label="Filters" onCollapse={() => setCollapsed(true)} />
+
+          <div className="flex-1 overflow-y-auto scrollbar-thin p-4">
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Event Type</p>
             <div className="space-y-1">
-              {categories.map((c) => {
-                const meta = categoryMeta[c]
+              {usedTypes.map((c) => {
+                const meta = getEventTypeMeta(c)
                 const Icon = meta.icon
                 return (
-                  <label
-                    key={c}
-                    className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-accent"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={catFilter.includes(c)}
-                      onChange={() => toggleCat(c)}
-                      className="accent-primary"
-                    />
+                  <label key={c} className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-accent">
+                    <input type="checkbox" checked={catFilter.includes(c)} onChange={() => toggleCat(c)} className="accent-primary" />
                     <Icon className={cn('size-3.5', meta.color)} aria-hidden />
                     {meta.label}
                   </label>
                 )
               })}
+              {usedTypes.length === 0 && <p className="text-xs text-muted-foreground">No events yet.</p>}
             </div>
           </div>
 
-          <div className="mt-5">
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              Date Range
-            </p>
-            <div className="space-y-2 text-xs">
-              <div className="relative">
-                <input
-                  type="date"
-                  aria-label="Start date"
-                  className="h-8 w-full rounded-md border border-border bg-background px-2 pr-8 outline-none focus:border-ring"
-                />
-              </div>
-              <div className="relative">
-                <input
-                  type="date"
-                  aria-label="End date"
-                  className="h-8 w-full rounded-md border border-border bg-background px-2 pr-8 outline-none focus:border-ring"
-                />
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            className="mt-5 w-full rounded-md border border-border bg-elevated px-3 py-2 text-xs font-medium hover:bg-accent"
-          >
-            Auto-generate from evidence
-          </button>
-
-          <div
-            onPointerDown={startResize}
-            className="absolute inset-y-0 -right-1 w-2 cursor-col-resize hover:bg-primary/20 active:bg-primary/30"
-          />
+          <div onPointerDown={startResize} className="absolute inset-y-0 -right-1 w-2 cursor-col-resize hover:bg-primary/20 active:bg-primary/30" />
         </div>
       )}
-
-      {/* Collapse toggle */}
-      <button
-        type="button"
-        onClick={() => setFiltersCollapsed((c) => !c)}
-        className="flex shrink-0 items-center justify-center border-r border-border bg-card px-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-        title={filtersCollapsed ? 'Show filters' : 'Hide filters'}
-      >
-        {filtersCollapsed ? (
-          <ChevronRight className="size-3.5" />
-        ) : (
-          <ChevronLeft className="size-3.5" />
-        )}
-      </button>
 
       {/* Timeline */}
       <div className="min-w-0 flex-1 overflow-y-auto scrollbar-thin p-6">
         <p className="mb-4 text-xs text-muted-foreground">
-          {filtered.length} events · chronological reconstruction
+          {loading ? 'Loading…' : `${filtered.length} events · chronological reconstruction`}
         </p>
         <div className="relative ml-2">
           <span className="absolute bottom-2 left-[1.05rem] top-2 w-px bg-border" />
           <ol>
             {filtered.map((event) => {
-              const meta = categoryMeta[event.category]
+              const meta = getEventTypeMeta(event.eventType)
               const Icon = meta.icon
               const active = selected?.id === event.id
               return (
@@ -217,7 +166,7 @@ export function TimelineView() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="font-mono text-xs text-muted-foreground">
-                        {event.timestamp}
+                        {new Date(event.occurredAt).toLocaleString()}
                       </p>
                       <span className={cn('text-[10px] font-medium uppercase tracking-wider', meta.color)}>
                         {meta.label}
@@ -232,10 +181,19 @@ export function TimelineView() {
               )
             })}
           </ol>
+          {!loading && filtered.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No events yet. Create one from the{' '}
+              <button type="button" onClick={() => router.push('/events')} className="font-medium text-primary hover:underline">
+                Events page
+              </button>
+              .
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Inspector — only when selected */}
+      {/* Read-only detail — editing happens on the Events page */}
       {selected && (
         <div className="w-80 shrink-0 overflow-y-auto scrollbar-thin border-l border-border bg-card">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -244,37 +202,23 @@ export function TimelineView() {
             </p>
             <button
               type="button"
-              onClick={() => setSelectedId(null)}
-              className="text-muted-foreground hover:text-foreground"
-              aria-label="Close detail"
+              onClick={() => router.push(`/events?highlight=${selected.id}`)}
+              className="flex items-center gap-1 rounded px-1.5 py-1 text-xs font-medium text-primary hover:bg-primary/10"
             >
-              <X className="size-4" />
+              Edit in Events <ArrowUpRight className="size-3.5" />
             </button>
           </div>
           <div className="space-y-5 p-4">
             <div>
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Timestamp</p>
-              <input
-                value={selected.timestamp}
-                onChange={(e) => updateEvent(selected.id, { timestamp: e.target.value })}
-                aria-label="Event timestamp"
-                className="w-full bg-transparent font-mono text-xs text-muted-foreground outline-none focus:border-b focus:border-ring"
-              />
-              <p className="mt-2 mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Title</p>
-              <input
-                value={selected.title}
-                onChange={(e) => updateEvent(selected.id, { title: e.target.value })}
-                aria-label="Event title"
-                className="w-full bg-transparent text-sm font-semibold outline-none focus:border-b focus:border-ring"
-              />
-              <p className="mt-2 mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Description</p>
-              <textarea
-                value={selected.description}
-                onChange={(e) => updateEvent(selected.id, { description: e.target.value })}
-                rows={3}
-                aria-label="Event description"
-                className="w-full resize-none bg-transparent text-sm leading-relaxed text-foreground/80 outline-none focus:border-b focus:border-ring"
-              />
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Timestamp</p>
+              <p className="font-mono text-xs text-muted-foreground">{new Date(selected.occurredAt).toLocaleString()}</p>
+              <p className="mt-2 text-sm font-semibold">{selected.title}</p>
+              {selected.location && (
+                <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                  <MapPin className="size-3" /> {selected.location}
+                </p>
+              )}
+              <p className="mt-2 text-sm leading-relaxed text-foreground/80">{selected.description}</p>
             </div>
 
             <div>

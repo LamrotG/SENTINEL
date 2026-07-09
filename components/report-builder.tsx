@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   Check,
   ChevronLeft,
@@ -8,8 +8,6 @@ import {
   FileText,
   Loader2,
   Mail,
-  Maximize2,
-  Minimize2,
   Printer,
   Share2,
   X,
@@ -22,6 +20,7 @@ import {
   StatusBadge,
 } from '@/components/primitives'
 import { cases, entities, evidence, theories, timelineEvents } from '@/lib/data'
+import { useCase } from '@/lib/case-context'
 import { cn } from '@/lib/utils'
 
 type SectionKey =
@@ -46,7 +45,7 @@ const MAX_CONFIG_W = 400
 const DEFAULT_CONFIG_W = 288
 
 export function ReportBuilder() {
-  const [caseId, setCaseId] = useState('CAS-2026-0148')
+  const { activeCaseId, setActiveCaseId } = useCase()
   const [enabled, setEnabled] = useState<Record<SectionKey, boolean>>({
     summary: true,
     entities: true,
@@ -57,17 +56,8 @@ export function ReportBuilder() {
   })
   const [configCollapsed, setConfigCollapsed] = useState(false)
   const [configWidth, setConfigWidth] = useState(DEFAULT_CONFIG_W)
-  const [fullscreen, setFullscreen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const resizing = useRef(false)
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && fullscreen) setFullscreen(false)
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [fullscreen])
 
   const startResize = useCallback((e: React.PointerEvent) => {
     e.preventDefault()
@@ -90,8 +80,8 @@ export function ReportBuilder() {
   }, [])
 
   const activeCase = useMemo(
-    () => cases.find((c) => c.id === caseId) ?? cases[0],
-    [caseId],
+    () => cases.find((c) => c.id === activeCaseId) ?? cases[0],
+    [activeCaseId],
   )
 
   const caseEntities = entities.filter((e) => activeCase.entityIds.includes(e.id))
@@ -101,34 +91,6 @@ export function ReportBuilder() {
 
   const toggle = (key: SectionKey) =>
     setEnabled((p) => ({ ...p, [key]: !p[key] }))
-
-  if (fullscreen) {
-    return (
-      <div className="fixed inset-0 z-50 overflow-y-auto bg-background scrollbar-thin">
-        <div className="flex items-center justify-between border-b border-border bg-background/80 px-6 py-3 backdrop-blur">
-          <p className="text-sm font-medium">Report — {activeCase.title}</p>
-          <button
-            type="button"
-            onClick={() => setFullscreen(false)}
-            className="flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-accent"
-          >
-            <Minimize2 className="size-3.5" aria-hidden />
-            Exit Fullscreen
-          </button>
-        </div>
-        <div className="p-6">
-          <ReportDocument
-            activeCase={activeCase}
-            enabled={enabled}
-            caseEntities={caseEntities}
-            caseEvidence={caseEvidence}
-            caseTimeline={caseTimeline}
-            caseTheories={caseTheories}
-          />
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="flex h-full">
@@ -150,8 +112,8 @@ export function ReportBuilder() {
               </label>
               <select
                 id="case-select"
-                value={caseId}
-                onChange={(e) => setCaseId(e.target.value)}
+                value={activeCaseId}
+                onChange={(e) => setActiveCaseId(e.target.value)}
                 className="w-full rounded-md border border-border bg-elevated px-2.5 py-2 text-sm outline-none focus:border-primary"
                 aria-label="Select case"
               >
@@ -242,15 +204,6 @@ export function ReportBuilder() {
 
       {/* Document preview */}
       <div className="relative min-w-0 flex-1 overflow-y-auto scrollbar-thin bg-background p-6">
-        {/* Floating fullscreen button */}
-        <button
-          type="button"
-          onClick={() => setFullscreen(true)}
-          className="absolute right-6 top-6 z-10 flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground"
-        >
-          <Maximize2 className="size-3.5" />
-          Fullscreen
-        </button>
         <ReportDocument
           activeCase={activeCase}
           enabled={enabled}

@@ -27,10 +27,23 @@ interface CaseContextValue {
 
 const CaseContext = createContext<CaseContextValue | null>(null)
 
+const STORAGE_KEY = 'sentinel:activeCaseId'
+
 export function CaseProvider({ children }: { children: ReactNode }) {
   const [cases, setCases] = useState<CaseRow[]>([])
-  const [activeCaseId, setActiveCaseId] = useState('')
+  const [activeCaseId, setActiveCaseIdState] = useState('')
   const [loading, setLoading] = useState(true)
+
+  // Selecting a case anywhere persists it, so every other page (and a page
+  // refresh) picks up the same case instead of resetting to the first one.
+  const setActiveCaseId = useCallback((id: string) => {
+    setActiveCaseIdState(id)
+    try {
+      window.localStorage.setItem(STORAGE_KEY, id)
+    } catch {
+      // localStorage unavailable (private mode, etc.) — selection just won't persist.
+    }
+  }, [])
 
   const reload = useCallback(() => {
     fetch('/api/cases')
@@ -38,8 +51,15 @@ export function CaseProvider({ children }: { children: ReactNode }) {
       .then((data) => {
         const arr = Array.isArray(data) ? data : []
         setCases(arr)
-        setActiveCaseId((prev) => {
+        setActiveCaseIdState((prev) => {
           if (prev && arr.some((c: CaseRow) => c.id === prev)) return prev
+          let stored = ''
+          try {
+            stored = window.localStorage.getItem(STORAGE_KEY) ?? ''
+          } catch {
+            // ignore
+          }
+          if (stored && arr.some((c: CaseRow) => c.id === stored)) return stored
           return arr[0]?.id ?? ''
         })
       })

@@ -121,3 +121,6 @@ Unlike traditional tools, Sentinel combines:
 Sentinel is built to simulate how real-world investigators think:
 
 Not just storing data — but connecting it, questioning it, and reasoning through it visually.
+
+
+

@@ -153,6 +153,10 @@ const evidenceTone: Record<EvidenceType, string> = {
   PDF: 'text-danger',
   CSV: 'text-success',
   Image: 'text-confidence',
+  Video: 'text-primary',
+  Audio: 'text-amber-400',
+  Document: 'text-indigo',
+  Link: 'text-info',
   Log: 'text-warning',
   Archive: 'text-muted-foreground',
 }

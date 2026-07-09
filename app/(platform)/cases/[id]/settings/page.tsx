@@ -89,6 +89,15 @@ export default function CaseSettingsPage() {
 
   useEffect(() => { load() }, [load])
 
+  // Best-effort near-real-time invitation status: the app has no push/websocket
+  // layer, so poll while the Invitations tab is open instead of requiring a
+  // manual refresh to see when a receiver accepts/declines.
+  useEffect(() => {
+    if (activeTab !== 'invitations') return
+    const interval = setInterval(load, 15000)
+    return () => clearInterval(interval)
+  }, [activeTab, load])
+
   if (loading || !caseData) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -316,7 +325,7 @@ function InvitationsTab({ invitations, caseId, onRefresh }: { invitations: Recor
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{inv.invitee_name as string}</p>
                   <p className="text-xs text-muted-foreground">
-                    {inv.type as string} · {inv.role ?? 'View Only'}
+                    {inv.type as string} · {inv.role ? `${inv.role}` : 'View Only'}
                   </p>
                 </div>
                 <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', inv.status === 'accepted' ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger')}>

@@ -1,63 +1,76 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, FileSearch, Search, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { FileSearch, Plus, Search, Trash2, X } from 'lucide-react'
 import {
   ConfidenceBar,
   EntityGlyph,
   EvidenceTypeBadge,
-  Panel,
   Tag,
 } from '@/components/primitives'
-import { entities, evidence as initialEvidence } from '@/lib/data'
+import { SidebarPanelHeader, CollapsedPanelRail } from '@/components/sidebar-panel-header'
+import { entities } from '@/lib/data'
 import { useCase } from '@/lib/case-context'
+import { useResizablePanel } from '@/lib/use-resizable-panel'
+import { useDebouncedPatch } from '@/lib/use-debounced-patch'
 import type { Evidence } from '@/lib/types'
 import type { EvidenceType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-const types: EvidenceType[] = ['Email', 'PDF', 'CSV', 'Image', 'Log', 'Archive']
+const types: EvidenceType[] = ['Email', 'PDF', 'CSV', 'Image', 'Video', 'Audio', 'Document', 'Link', 'Log', 'Archive']
 
-const MIN_FILTER_W = 180
-const MAX_FILTER_W = 320
+const COLLAPSED_FILTER_W = 40
 const DEFAULT_FILTER_W = 224
 
 export function EvidenceVault() {
   const { activeCaseId } = useCase()
-  const [evidenceData, setEvidenceData] = useState<Evidence[]>([...initialEvidence])
+  const [evidenceData, setEvidenceData] = useState<Evidence[]>([])
+  const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<EvidenceType[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [filtersCollapsed, setFiltersCollapsed] = useState(false)
-  const [filterWidth, setFilterWidth] = useState(DEFAULT_FILTER_W)
-  const resizing = useRef(false)
+  const [creating, setCreating] = useState(false)
 
-  const startResize = useCallback((e: React.PointerEvent) => {
-    e.preventDefault()
-    resizing.current = true
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-    const onMove = (ev: PointerEvent) => {
-      if (!resizing.current) return
-      setFilterWidth(Math.min(MAX_FILTER_W, Math.max(MIN_FILTER_W, ev.clientX)))
-    }
-    const onUp = () => {
-      resizing.current = false
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-      document.removeEventListener('pointermove', onMove)
-      document.removeEventListener('pointerup', onUp)
-    }
-    document.addEventListener('pointermove', onMove)
-    document.addEventListener('pointerup', onUp)
-  }, [])
+  const { containerRef, currentWidth, collapsed, setCollapsed, startResize } = useResizablePanel({
+    collapsedWidth: COLLAPSED_FILTER_W,
+    defaultWidth: DEFAULT_FILTER_W,
+  })
+
+  const patchEvidence = useDebouncedPatch<Evidence>((id) => `/api/evidence/${id}`)
+
+  useEffect(() => {
+    if (!activeCaseId) return
+    setLoading(true)
+    setSelectedId(null)
+    fetch(`/api/evidence?caseId=${encodeURIComponent(activeCaseId)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => {
+        const mapped: Evidence[] = (Array.isArray(rows) ? rows : []).map((r) => ({
+          id: r.id,
+          name: r.name,
+          type: r.type,
+          source: r.source ?? '',
+          addedAt: r.added_at ?? '',
+          size: r.size ?? '',
+          tags: r.tags ?? [],
+          confidence: r.confidence ?? 0,
+          caseId: r.case_id,
+          linkedEntityIds: r.linked_entity_ids ?? [],
+          summary: r.summary ?? '',
+        }))
+        setEvidenceData(mapped)
+      })
+      .catch(() => setEvidenceData([]))
+      .finally(() => setLoading(false))
+  }, [activeCaseId])
 
   function updateEvidence(id: string, patch: Partial<Evidence>) {
     setEvidenceData((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)))
+    patchEvidence(id, patch)
   }
 
   const filtered = useMemo(() => {
     return evidenceData.filter((e) => {
-      if (activeCaseId && e.caseId !== activeCaseId) return false
       if (typeFilter.length && !typeFilter.includes(e.type)) return false
       if (
         query &&
@@ -68,7 +81,7 @@ export function EvidenceVault() {
         return false
       return true
     })
-  }, [query, typeFilter, activeCaseId, evidenceData])
+  }, [query, typeFilter, evidenceData])
 
   const selected = selectedId ? filtered.find((e) => e.id === selectedId) ?? null : null
   const linkedEntities = selected
@@ -87,19 +100,63 @@ export function EvidenceVault() {
     setSelectedId((prev) => (prev === id ? null : id))
   }
 
+  const createEvidence = useCallback(async () => {
+    if (!activeCaseId || creating) return
+    setCreating(true)
+    try {
+      const res = await fetch('/api/evidence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caseId: activeCaseId, name: 'Untitled evidence', type: 'PDF' }),
+      })
+      if (!res.ok) throw new Error('Failed to create evidence')
+      const row = await res.json()
+      const created: Evidence = {
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        source: row.source ?? '',
+        addedAt: row.added_at ?? '',
+        size: row.size ?? '',
+        tags: row.tags ?? [],
+        confidence: row.confidence ?? 0,
+        caseId: row.case_id,
+        linkedEntityIds: row.linked_entity_ids ?? [],
+        summary: row.summary ?? '',
+      }
+      setEvidenceData((prev) => [created, ...prev])
+      setSelectedId(created.id)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setCreating(false)
+    }
+  }, [activeCaseId, creating])
+
+  async function deleteEvidence(id: string) {
+    setEvidenceData((prev) => prev.filter((e) => e.id !== id))
+    setSelectedId(null)
+    try {
+      await fetch(`/api/evidence/${id}`, { method: 'DELETE' })
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
   return (
     <div className="flex h-full">
       {/* Filters — collapsible + resizable */}
-      {!filtersCollapsed && (
+      {collapsed ? (
+        <CollapsedPanelRail label="Filters" onExpand={() => setCollapsed(false)} />
+      ) : (
         <div
-          className="relative shrink-0 overflow-y-auto scrollbar-thin border-r border-border bg-card p-4"
-          style={{ width: filterWidth }}
+          ref={containerRef}
+          className="relative flex shrink-0 flex-col border-r border-border bg-card"
+          style={{ width: currentWidth }}
         >
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Filters
-          </p>
+          <SidebarPanelHeader label="Filters" onCollapse={() => setCollapsed(true)} />
 
-          <div className="mt-4">
+          <div className="flex-1 overflow-y-auto scrollbar-thin p-4">
             <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
               File Type
             </p>
@@ -119,20 +176,20 @@ export function EvidenceVault() {
                 </label>
               ))}
             </div>
-          </div>
 
-          {(typeFilter.length > 0 || query) && (
-            <button
-              type="button"
-              onClick={() => {
-                setTypeFilter([])
-                setQuery('')
-              }}
-              className="mt-5 flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-            >
-              <X className="size-3.5" /> Clear filters
-            </button>
-          )}
+            {(typeFilter.length > 0 || query) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTypeFilter([])
+                  setQuery('')
+                }}
+                className="mt-5 flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+              >
+                <X className="size-3.5" /> Clear filters
+              </button>
+            )}
+          </div>
 
           {/* Resize handle */}
           <div
@@ -141,20 +198,6 @@ export function EvidenceVault() {
           />
         </div>
       )}
-
-      {/* Collapse toggle */}
-      <button
-        type="button"
-        onClick={() => setFiltersCollapsed((c) => !c)}
-        className="flex shrink-0 items-center justify-center border-r border-border bg-card px-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-        title={filtersCollapsed ? 'Show filters' : 'Hide filters'}
-      >
-        {filtersCollapsed ? (
-          <ChevronRight className="size-3.5" />
-        ) : (
-          <ChevronLeft className="size-3.5" />
-        )}
-      </button>
 
       {/* Table */}
       <div className="flex min-w-0 flex-1 flex-col">
@@ -171,12 +214,24 @@ export function EvidenceVault() {
               className="h-9 w-full rounded-md border border-border bg-background pl-9 pr-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring"
             />
           </div>
-          <span className="text-xs text-muted-foreground">
+          <button
+            type="button"
+            onClick={createEvidence}
+            disabled={creating || !activeCaseId}
+            className="flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+          >
+            <Plus className="size-4" aria-hidden />
+            New Evidence
+          </button>
+          <span className="ml-auto shrink-0 text-xs text-muted-foreground">
             {filtered.length} of {evidenceData.length} items
           </span>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
+          {loading ? (
+            <p className="px-4 py-16 text-center text-sm text-muted-foreground">Loading evidence…</p>
+          ) : (
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-background">
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
@@ -231,6 +286,7 @@ export function EvidenceVault() {
               )}
             </tbody>
           </table>
+          )}
         </div>
       </div>
 
@@ -241,19 +297,37 @@ export function EvidenceVault() {
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Evidence Preview
             </p>
-            <button
-              type="button"
-              onClick={() => setSelectedId(null)}
-              className="text-muted-foreground hover:text-foreground"
-              aria-label="Close preview"
-            >
-              <X className="size-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => deleteEvidence(selected.id)}
+                className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-danger/10 hover:text-danger"
+              >
+                <Trash2 className="size-3.5" /> Remove
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedId(null)}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Close preview"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
           </div>
           <div className="space-y-5 p-4">
             <div>
               <div className="flex items-center gap-2">
-                <EvidenceTypeBadge type={selected.type} />
+                <select
+                  value={selected.type}
+                  onChange={(e) => updateEvidence(selected.id, { type: e.target.value as EvidenceType })}
+                  aria-label="Evidence type"
+                  className="rounded-md border border-border bg-elevated px-2 py-0.5 text-xs font-medium outline-none focus:border-ring"
+                >
+                  {types.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
                 <span className="text-xs text-muted-foreground">{selected.size}</span>
               </div>
               <input
@@ -318,37 +392,6 @@ export function EvidenceVault() {
         </div>
       )}
     </div>
-  )
-}
-
-function FilterRadio({
-  label,
-  active,
-  onClick,
-}: {
-  label: string
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm',
-        active ? 'text-foreground' : 'text-muted-foreground hover:bg-accent',
-      )}
-    >
-      <span
-        className={cn(
-          'flex size-3.5 items-center justify-center rounded-full border',
-          active ? 'border-primary' : 'border-muted-foreground/50',
-        )}
-      >
-        {active && <span className="size-1.5 rounded-full bg-primary" />}
-      </span>
-      <span className="truncate font-mono text-xs">{label}</span>
-    </button>
   )
 }
 
