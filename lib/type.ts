@@ -10,7 +10,17 @@ export type EntityType =
   | 'wallet'
   | 'email'
 
-export type EvidenceType = 'Email' | 'PDF' | 'CSV' | 'Image' | 'Log' | 'Archive'
+export type EvidenceType =
+  | 'Email'
+  | 'PDF'
+  | 'CSV'
+  | 'Image'
+  | 'Video'
+  | 'Audio'
+  | 'Document'
+  | 'Link'
+  | 'Log'
+  | 'Archive'
 
 export interface InvestigationCase {
   id: string
@@ -61,6 +71,22 @@ export interface TimelineEvent {
   entityIds: string[]
   evidenceIds: string[]
   category: 'access' | 'communication' | 'transaction' | 'system' | 'detection'
+}
+
+// ── Events (single source of truth for the Events page & Timeline view) ──
+
+export interface CaseEvent {
+  id: string
+  title: string
+  description: string
+  caseId: string
+  entityIds: string[]
+  evidenceIds: string[]
+  eventType: string
+  occurredAt: string
+  location: string
+  tags: string[]
+  notes: string
 }
 
 export interface ActivityItem {

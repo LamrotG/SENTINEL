@@ -124,3 +124,32 @@ into a single unified intelligence workspace.
 Sentinel is built to simulate how real-world investigators think:
 
 Not just storing data — but connecting it, questioning it, and reasoning through it visually.
+
+🚀 Getting Started
+
+Prerequisites: Node.js 20+, pnpm, and a Postgres database (this project is built against [Neon](https://neon.tech)).
+
+1. Install dependencies:
+
+   ```bash
+   pnpm install
+   ```
+
+2. Configure environment variables — copy `.env.example` to `.env.local` and fill in:
+
+   ```bash
+   cp .env.example .env.local
+   ```
+
+   - `DATABASE_URL` — your Postgres connection string
+   - `SESSION_SECRET` — a random secret used to sign session cookies
+
+3. Set up the database schema and seed data. This repository's schema migration and seed scripts are maintained privately by the project owner and aren't included in this snapshot — reach out to the maintainer for the current schema if you're setting up a fresh instance.
+
+4. Run the dev server:
+
+   ```bash
+   pnpm dev
+   ```
+
+   The app runs at `http://localhost:3000`.

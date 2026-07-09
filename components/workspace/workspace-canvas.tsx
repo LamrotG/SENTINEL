@@ -1,13 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Boxes,
   Building2,
-  ChevronLeft,
-  ChevronRight,
   Globe,
-  Layers,
   Laptop,
   Lightbulb,
   Link2,
@@ -29,13 +26,11 @@ import {
   getEntityMeta,
   RiskScore,
 } from '@/components/primitives'
-import {
-  initialConnections,
-  initialNodes,
-  type CanvasConnection,
-  type CanvasNode,
-  type NodeKind,
-} from '@/lib/workspace-data'
+import { SidebarPanelHeader, CollapsedPanelRail } from '@/components/sidebar-panel-header'
+import { useCase } from '@/lib/case-context'
+import { useResizablePanel } from '@/lib/use-resizable-panel'
+import { useDebouncedPatch } from '@/lib/use-debounced-patch'
+import type { CanvasConnection, CanvasNode, NodeKind } from '@/lib/workspace-data'
 import type { EntityType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -59,14 +54,45 @@ const noteToneClass: Record<string, string> = {
   red: 'bg-danger/10 border-danger/40',
 }
 
-const MIN_TOOLS_W = 160
-const MAX_TOOLS_W = 320
+const COLLAPSED_TOOLS_W = 40
 const DEFAULT_TOOLS_W = 208
 
-let idCounter = 0
-const nextId = (prefix: string) => `${prefix}-${Date.now()}-${idCounter++}`
+const DRAG_MIME = 'application/x-sentinel-tool'
+
+interface ToolDescriptor {
+  kind: NodeKind
+  entityType?: EntityType
+}
+
+function nodeFromRow(r: Record<string, unknown>): CanvasNode {
+  return {
+    id: r.id as string,
+    kind: r.kind as NodeKind,
+    x: Number(r.x),
+    y: Number(r.y),
+    w: Number(r.w),
+    h: Number(r.h),
+    title: (r.title as string) ?? '',
+    body: (r.body as string) ?? undefined,
+    entityType: (r.entity_type as EntityType) ?? undefined,
+    evidenceType: (r.evidence_type as string) ?? undefined,
+    confidence: r.confidence == null ? undefined : Number(r.confidence),
+    riskScore: r.risk_score == null ? undefined : Number(r.risk_score),
+    noteTone: (r.note_tone as CanvasNode['noteTone']) ?? undefined,
+  }
+}
+
+function connectionFromRow(r: Record<string, unknown>): CanvasConnection {
+  return {
+    id: r.id as string,
+    from: r.from_node_id as string,
+    to: r.to_node_id as string,
+    label: (r.label as string) ?? '',
+  }
+}
 
 export function WorkspaceCanvas() {
+  const { activeCaseId } = useCase()
   const containerRef = useRef<HTMLDivElement>(null)
   const interaction = useRef<{
     type: 'pan' | 'node'
@@ -75,13 +101,15 @@ export function WorkspaceCanvas() {
     startY: number
     originX: number
     originY: number
+    moved?: boolean
   } | null>(null)
 
-  const [nodes, setNodes] = useState<CanvasNode[]>(initialNodes)
-  const [connections, setConnections] = useState<CanvasConnection[]>(initialConnections)
+  const [nodes, setNodes] = useState<CanvasNode[]>([])
+  const [connections, setConnections] = useState<CanvasConnection[]>([])
   const [pan, setPan] = useState({ x: 40, y: 20 })
   const [zoom, setZoom] = useState(0.85)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null)
   const [connectMode, setConnectMode] = useState(false)
   const [connectFrom, setConnectFrom] = useState<string | null>(null)
   const [entityMenu, setEntityMenu] = useState(false)
@@ -89,32 +117,31 @@ export function WorkspaceCanvas() {
   const [hidden, setHidden] = useState<Record<NodeKind, boolean>>({
     note: false, evidence: false, entity: false, theory: false,
   })
-  const [toolsCollapsed, setToolsCollapsed] = useState(false)
-  const [toolsWidth, setToolsWidth] = useState(DEFAULT_TOOLS_W)
   const [fullscreen, setFullscreen] = useState(false)
-  const toolsResizing = useRef(false)
+  const [dragOver, setDragOver] = useState(false)
+
+  const { containerRef: toolsRef, currentWidth: toolsWidth, collapsed: toolsCollapsed, setCollapsed: setToolsCollapsed, startResize: startToolsResize } = useResizablePanel({
+    collapsedWidth: COLLAPSED_TOOLS_W,
+    defaultWidth: DEFAULT_TOOLS_W,
+  })
+
+  const patchNode = useDebouncedPatch<CanvasNode>((id) => `/api/workspace/nodes/${id}`)
 
   const selected = nodes.find((n) => n.id === selectedId) ?? null
 
-  const startToolsResize = useCallback((e: React.PointerEvent) => {
-    e.preventDefault()
-    toolsResizing.current = true
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-    const onMove = (ev: PointerEvent) => {
-      if (!toolsResizing.current) return
-      setToolsWidth(Math.min(MAX_TOOLS_W, Math.max(MIN_TOOLS_W, ev.clientX)))
-    }
-    const onUp = () => {
-      toolsResizing.current = false
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-      document.removeEventListener('pointermove', onMove)
-      document.removeEventListener('pointerup', onUp)
-    }
-    document.addEventListener('pointermove', onMove)
-    document.addEventListener('pointerup', onUp)
-  }, [])
+  useEffect(() => {
+    if (!activeCaseId) return
+    setSelectedId(null)
+    setSelectedConnectionId(null)
+    fetch(`/api/workspace/nodes?caseId=${encodeURIComponent(activeCaseId)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => setNodes((Array.isArray(rows) ? rows : []).map(nodeFromRow)))
+      .catch(() => setNodes([]))
+    fetch(`/api/workspace/connections?caseId=${encodeURIComponent(activeCaseId)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => setConnections((Array.isArray(rows) ? rows : []).map(connectionFromRow)))
+      .catch(() => setConnections([]))
+  }, [activeCaseId])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -129,17 +156,23 @@ export function WorkspaceCanvas() {
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      const rect = el.getBoundingClientRect()
-      const mx = e.clientX - rect.left
-      const my = e.clientY - rect.top
-      setZoom((z) => {
-        const nz = clamp(z * (1 + -e.deltaY * 0.0015), 0.4, 1.8)
-        setPan((p) => ({
-          x: mx - (mx - p.x) * (nz / z),
-          y: my - (my - p.y) * (nz / z),
-        }))
-        return nz
-      })
+      if (e.ctrlKey) {
+        // Pinch-to-zoom (trackpad) or explicit Ctrl+scroll — zoom toward cursor.
+        const rect = el.getBoundingClientRect()
+        const mx = e.clientX - rect.left
+        const my = e.clientY - rect.top
+        setZoom((z) => {
+          const nz = clamp(z * (1 + -e.deltaY * 0.0015), 0.4, 1.8)
+          setPan((p) => ({
+            x: mx - (mx - p.x) * (nz / z),
+            y: my - (my - p.y) * (nz / z),
+          }))
+          return nz
+        })
+      } else {
+        // Plain wheel / two-finger trackpad scroll — pan the canvas.
+        setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }))
+      }
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
@@ -148,6 +181,7 @@ export function WorkspaceCanvas() {
   function onBgPointerDown(e: React.PointerEvent) {
     if (connectMode) { setConnectFrom(null); return }
     setSelectedId(null)
+    setSelectedConnectionId(null)
     interaction.current = {
       type: 'pan', startX: e.clientX, startY: e.clientY,
       originX: pan.x, originY: pan.y,
@@ -158,9 +192,10 @@ export function WorkspaceCanvas() {
     e.stopPropagation()
     if (connectMode) { handleConnectClick(node.id); return }
     setSelectedId(node.id)
+    setSelectedConnectionId(null)
     interaction.current = {
       type: 'node', nodeId: node.id, startX: e.clientX, startY: e.clientY,
-      originX: node.x, originY: node.y,
+      originX: node.x, originY: node.y, moved: false,
     }
   }
 
@@ -172,18 +207,40 @@ export function WorkspaceCanvas() {
     } else {
       const dx = (e.clientX - it.startX) / zoom
       const dy = (e.clientY - it.startY) / zoom
+      it.moved = true
       setNodes((ns) => ns.map((n) => n.id === it.nodeId ? { ...n, x: it.originX + dx, y: it.originY + dy } : n))
     }
   }
 
-  function onPointerUp() { interaction.current = null }
+  function onPointerUp() {
+    const it = interaction.current
+    if (it?.type === 'node' && it.moved) {
+      const node = nodes.find((n) => n.id === it.nodeId)
+      if (node) patchNode(node.id, { x: node.x, y: node.y })
+    }
+    interaction.current = null
+  }
 
   function handleConnectClick(id: string) {
     if (connectFrom === null) { setConnectFrom(id); return }
     if (connectFrom === id) { setConnectFrom(null); return }
-    setConnections((cs) => [...cs, { id: nextId('c'), from: connectFrom, to: id, label: 'related to' }])
+    const fromId = connectFrom
     setConnectFrom(null)
     setConnectMode(false)
+    fetch('/api/workspace/connections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId: activeCaseId, fromNodeId: fromId, toNodeId: id, label: 'related to' }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((row) => { if (row) setConnections((cs) => [...cs, connectionFromRow(row)]) })
+      .catch((err) => console.error(err))
+  }
+
+  function screenToCanvas(clientX: number, clientY: number) {
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return { x: 0, y: 0 }
+    return { x: (clientX - rect.left - pan.x) / zoom, y: (clientY - rect.top - pan.y) / zoom }
   }
 
   function viewCenter() {
@@ -192,29 +249,101 @@ export function WorkspaceCanvas() {
     return { x: (rect.width / 2 - pan.x) / zoom - 105, y: (rect.height / 2 - pan.y) / zoom - 44 }
   }
 
-  function addNode(node: Omit<CanvasNode, 'x' | 'y' | 'id'>) {
-    const c = viewCenter()
-    const id = nextId(node.kind)
-    setNodes((ns) => [...ns, { ...node, id, x: c.x, y: c.y }])
-    setSelectedId(id)
+  const addNode = useCallback(async (node: Omit<CanvasNode, 'x' | 'y' | 'id'>, at?: { x: number; y: number }) => {
+    if (!activeCaseId) return
+    const c = at ?? viewCenter()
+    const x = at ? at.x - node.w / 2 : c.x
+    const y = at ? at.y - node.h / 2 : c.y
+    try {
+      const res = await fetch('/api/workspace/nodes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caseId: activeCaseId, kind: node.kind, x, y, w: node.w, h: node.h,
+          title: node.title, bodyText: node.body ?? null,
+          entityType: node.entityType ?? null, evidenceType: node.evidenceType ?? null,
+          confidence: node.confidence ?? null, riskScore: node.riskScore ?? null, noteTone: node.noteTone ?? null,
+        }),
+      })
+      if (!res.ok) throw new Error('Failed to create node')
+      const created = nodeFromRow(await res.json())
+      setNodes((ns) => [...ns, created])
+      setSelectedId(created.id)
+      setSelectedConnectionId(null)
+    } catch (err) {
+      console.error(err)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCaseId, pan, zoom])
+
+  function toolPayload(descriptor: ToolDescriptor): Omit<CanvasNode, 'x' | 'y' | 'id'> {
+    if (descriptor.kind === 'note') return { kind: 'note', w: 210, h: 116, title: 'New note', body: 'Add observation…', noteTone: 'blue' }
+    if (descriptor.kind === 'evidence') return { kind: 'evidence', w: 220, h: 92, title: 'New_Evidence.file', body: 'Unverified', evidenceType: 'PDF', confidence: 50 }
+    if (descriptor.kind === 'theory') return { kind: 'theory', w: 250, h: 150, title: 'New theory', confidence: 50 }
+    const meta = getEntityMeta(descriptor.entityType ?? 'person')
+    return { kind: 'entity', entityType: descriptor.entityType, w: 220, h: 88, title: `New ${meta.label}`, body: meta.label, riskScore: 40 }
   }
 
-  function deleteSelected() {
+  function onToolDragStart(e: React.DragEvent, descriptor: ToolDescriptor) {
+    e.dataTransfer.setData(DRAG_MIME, JSON.stringify(descriptor))
+    e.dataTransfer.effectAllowed = 'copy'
+  }
+
+  function onCanvasDragOver(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes(DRAG_MIME)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+    setDragOver(true)
+  }
+
+  function onCanvasDrop(e: React.DragEvent) {
+    const raw = e.dataTransfer.getData(DRAG_MIME)
+    setDragOver(false)
+    if (!raw) return
+    e.preventDefault()
+    const descriptor: ToolDescriptor = JSON.parse(raw)
+    const at = screenToCanvas(e.clientX, e.clientY)
+    addNode(toolPayload(descriptor), at)
+  }
+
+  async function deleteSelected() {
     if (!selectedId) return
-    setNodes((ns) => ns.filter((n) => n.id !== selectedId))
-    setConnections((cs) => cs.filter((c) => c.from !== selectedId && c.to !== selectedId))
+    const id = selectedId
+    setNodes((ns) => ns.filter((n) => n.id !== id))
+    setConnections((cs) => cs.filter((c) => c.from !== id && c.to !== id))
     setSelectedId(null)
+    try {
+      await fetch(`/api/workspace/nodes/${id}`, { method: 'DELETE' })
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  function updateSelectedNode(patch: Partial<CanvasNode>) {
+    if (!selected) return
+    setNodes((ns) => ns.map((n) => n.id === selected.id ? { ...n, ...patch } : n))
+    patchNode(selected.id, patch)
   }
 
   const center = (n: CanvasNode) => ({ x: n.x + n.w / 2, y: n.y + n.h / 2 })
 
-  const tools = [
-    { label: 'Add Note', icon: StickyNote, onClick: () => addNode({ kind: 'note', w: 210, h: 116, title: 'New note', body: 'Add observation…', noteTone: 'blue' }) },
-    { label: 'Add Evidence', icon: Boxes, onClick: () => addNode({ kind: 'evidence', w: 220, h: 92, title: 'New_Evidence.file', body: 'Unverified', evidenceType: 'PDF', confidence: 50 }) },
+  const selectedConnection = useMemo(
+    () => connections.find((c) => c.id === selectedConnectionId) ?? null,
+    [connections, selectedConnectionId],
+  )
+
+  function selectConnection(e: React.PointerEvent | React.MouseEvent, id: string) {
+    e.stopPropagation()
+    setSelectedConnectionId(id)
+    setSelectedId(null)
+  }
+
+  const tools: { label: string; icon: typeof User; onClick: () => void; active?: boolean; drag?: ToolDescriptor }[] = [
+    { label: 'Add Note', icon: StickyNote, onClick: () => addNode(toolPayload({ kind: 'note' })), drag: { kind: 'note' } },
+    { label: 'Add Evidence', icon: Boxes, onClick: () => addNode(toolPayload({ kind: 'evidence' })), drag: { kind: 'evidence' } },
     { label: 'Add Entity', icon: Network, onClick: () => setEntityMenu((v) => !v) },
     { label: 'Connect', icon: Link2, onClick: () => { setConnectMode((v) => !v); setConnectFrom(null) }, active: connectMode },
-    { label: 'Add Theory', icon: Lightbulb, onClick: () => addNode({ kind: 'theory', w: 250, h: 150, title: 'New theory', confidence: 50 }) },
-    { label: 'Layers', icon: Layers, onClick: () => setLayerMenu((v) => !v) },
+    { label: 'Add Theory', icon: Lightbulb, onClick: () => addNode(toolPayload({ kind: 'theory' })), drag: { kind: 'theory' } },
   ]
 
   const workspaceContent = (
@@ -230,20 +359,25 @@ export function WorkspaceCanvas() {
       )}
 
       {/* Tools — collapsible + resizable */}
-      {!toolsCollapsed && (
+      {toolsCollapsed ? (
+        <div className={cn('flex shrink-0', fullscreen && 'mt-10')}>
+          <CollapsedPanelRail label="Tools" onExpand={() => setToolsCollapsed(false)} />
+        </div>
+      ) : (
         <div
+          ref={toolsRef}
           className={cn('relative flex shrink-0 flex-col border-r border-border bg-card', fullscreen && 'mt-10')}
           style={{ width: toolsWidth }}
         >
-          <div className="border-b border-border px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tools</p>
-          </div>
+          <SidebarPanelHeader label="Tools" onCollapse={() => setToolsCollapsed(true)} />
           <div className="space-y-1 p-2">
             {tools.map((t) => {
               const Icon = t.icon
               return (
                 <button key={t.label} type="button" onClick={t.onClick}
-                  className={cn('flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', t.active ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-accent')}
+                  draggable={Boolean(t.drag)}
+                  onDragStart={t.drag ? (e) => onToolDragStart(e, t.drag as ToolDescriptor) : undefined}
+                  className={cn('flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', t.active ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-accent', t.drag && 'cursor-grab active:cursor-grabbing')}
                 >
                   <Icon className="size-4" aria-hidden /> {t.label}
                 </button>
@@ -259,8 +393,11 @@ export function WorkspaceCanvas() {
                   const Icon = et.icon
                   const meta = getEntityMeta(et.type)
                   return (
-                    <button key={et.type} type="button" onClick={() => { addNode({ kind: 'entity', entityType: et.type, w: 220, h: 88, title: `New ${meta.label}`, body: meta.label, riskScore: 40 }); setEntityMenu(false) }}
-                      className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs hover:bg-accent"
+                    <button key={et.type} type="button"
+                      draggable
+                      onDragStart={(e) => onToolDragStart(e, { kind: 'entity', entityType: et.type })}
+                      onClick={() => { addNode(toolPayload({ kind: 'entity', entityType: et.type })); setEntityMenu(false) }}
+                      className="flex cursor-grab items-center gap-1.5 rounded-md px-2 py-1.5 text-xs hover:bg-accent active:cursor-grabbing"
                     >
                       <Icon className={cn('size-3.5', meta.color)} aria-hidden /> {meta.label}
                     </button>
@@ -283,29 +420,22 @@ export function WorkspaceCanvas() {
           )}
 
           <div className="mt-auto border-t border-border p-3 text-xs text-muted-foreground">
-            <p className="leading-relaxed">Drag canvas to pan · scroll to zoom · drag cards to arrange.</p>
+            <p className="leading-relaxed">Drag a tool onto the canvas, or click to add · scroll to pan · Ctrl+scroll to zoom.</p>
           </div>
 
           <div onPointerDown={startToolsResize} className="absolute inset-y-0 -right-1 w-2 cursor-col-resize hover:bg-primary/20 active:bg-primary/30" />
         </div>
       )}
 
-      {/* Collapse toggle */}
-      <button type="button" onClick={() => setToolsCollapsed((c) => !c)}
-        className={cn('flex shrink-0 items-center justify-center border-r border-border bg-card px-1 text-muted-foreground hover:bg-accent hover:text-foreground', fullscreen && 'mt-10')}
-        title={toolsCollapsed ? 'Show tools' : 'Hide tools'}
-      >
-        {toolsCollapsed ? <ChevronRight className="size-3.5" /> : <ChevronLeft className="size-3.5" />}
-      </button>
-
       {/* Canvas */}
       <div className={cn('relative min-w-0 flex-1', fullscreen && 'mt-10')}>
         <div ref={containerRef}
-          className={cn('workspace-grid absolute inset-0 overflow-hidden bg-background', connectMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing')}
+          className={cn('workspace-grid absolute inset-0 overflow-hidden bg-background', connectMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing', dragOver && 'ring-2 ring-inset ring-primary/50')}
           onPointerDown={onBgPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerLeave={onPointerUp}
+          onDragOver={onCanvasDragOver} onDragLeave={() => setDragOver(false)} onDrop={onCanvasDrop}
         >
           <div className="absolute left-0 top-0" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }}>
-            <svg className="pointer-events-none absolute left-0 top-0 overflow-visible" width={1} height={1}>
+            <svg className="absolute left-0 top-0 overflow-visible" width={1} height={1}>
               {connections.map((c) => {
                 const a = nodes.find((n) => n.id === c.from)
                 const b = nodes.find((n) => n.id === c.to)
@@ -313,14 +443,38 @@ export function WorkspaceCanvas() {
                 const p1 = center(a), p2 = center(b)
                 const dx = Math.max(50, Math.abs(p2.x - p1.x) / 2)
                 const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2
-                const active = selectedId === a.id || selectedId === b.id
+                const endpointActive = selectedId === a.id || selectedId === b.id
+                const isSelected = selectedConnectionId === c.id
                 return (
                   <g key={c.id}>
-                    <path d={`M ${p1.x} ${p1.y} C ${p1.x + dx} ${p1.y}, ${p2.x - dx} ${p2.y}, ${p2.x} ${p2.y}`} fill="none" stroke={active ? 'var(--primary)' : 'oklch(0.6 0.02 256 / 55%)'} strokeWidth={active ? 2 : 1.5} strokeDasharray="5 4" />
-                    <circle cx={p2.x} cy={p2.y} r={3} fill="var(--primary)" />
-                    <foreignObject x={mx - 60} y={my - 12} width={120} height={24} className="overflow-visible">
+                    <path
+                      d={`M ${p1.x} ${p1.y} C ${p1.x + dx} ${p1.y}, ${p2.x - dx} ${p2.y}, ${p2.x} ${p2.y}`}
+                      fill="none" stroke="transparent" strokeWidth={16}
+                      className="pointer-events-auto cursor-pointer"
+                      onPointerDown={(e) => selectConnection(e, c.id)}
+                    />
+                    <path
+                      d={`M ${p1.x} ${p1.y} C ${p1.x + dx} ${p1.y}, ${p2.x - dx} ${p2.y}, ${p2.x} ${p2.y}`}
+                      fill="none"
+                      stroke={isSelected ? 'var(--primary)' : endpointActive ? 'var(--primary)' : 'oklch(0.6 0.02 256 / 55%)'}
+                      strokeWidth={isSelected ? 3 : endpointActive ? 2 : 1.5}
+                      strokeDasharray={isSelected ? undefined : '5 4'}
+                      className="pointer-events-none"
+                    />
+                    <circle cx={p2.x} cy={p2.y} r={isSelected ? 4 : 3} fill="var(--primary)" className="pointer-events-none" />
+                    <foreignObject x={mx - 70} y={my - 14} width={140} height={28} className="overflow-visible pointer-events-auto">
                       <div className="flex justify-center">
-                        <span className="rounded border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{c.label}</span>
+                        <span
+                          onPointerDown={(e) => selectConnection(e, c.id)}
+                          className={cn(
+                            'cursor-pointer rounded border px-1.5 py-0.5 text-[10px] font-medium transition-colors',
+                            isSelected
+                              ? 'border-primary bg-primary text-primary-foreground font-semibold text-[11px]'
+                              : 'border-border bg-card text-muted-foreground hover:border-primary/50',
+                          )}
+                        >
+                          {c.label}
+                        </span>
                       </div>
                     </foreignObject>
                   </g>
@@ -359,6 +513,9 @@ export function WorkspaceCanvas() {
               <Plus className="size-4" />
             </button>
             <span className="mx-0.5 h-5 w-px bg-border" />
+            <button type="button" onClick={() => setLayerMenu((v) => !v)} className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Layers">
+              <Network className="size-4" />
+            </button>
             <button type="button" onClick={() => setFullscreen((f) => !f)} className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground" aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
               {fullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
             </button>
@@ -372,7 +529,7 @@ export function WorkspaceCanvas() {
         </div>
       </div>
 
-      {/* Inspector — hidden by default, appears on selection */}
+      {/* Inspector — node or connection, hidden by default, appears on selection */}
       {selected && (
         <div className={cn('flex w-80 shrink-0 flex-col border-l border-border bg-card', fullscreen && 'mt-10')}>
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -387,7 +544,61 @@ export function WorkspaceCanvas() {
             </div>
           </div>
           <div className="flex-1 overflow-y-auto scrollbar-thin p-4">
-            <Inspector node={selected} connections={connections} nodes={nodes} onUpdate={(patch) => setNodes((ns) => ns.map((n) => n.id === selected.id ? { ...n, ...patch } : n))} />
+            <Inspector node={selected} connections={connections} nodes={nodes} onUpdate={updateSelectedNode} />
+          </div>
+        </div>
+      )}
+
+      {!selected && selectedConnection && (
+        <div className={cn('flex w-80 shrink-0 flex-col border-l border-border bg-card', fullscreen && 'mt-10')}>
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Connection</p>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  const id = selectedConnection.id
+                  setConnections((cs) => cs.filter((c) => c.id !== id))
+                  setSelectedConnectionId(null)
+                  try { await fetch(`/api/workspace/connections/${id}`, { method: 'DELETE' }) } catch (err) { console.error(err) }
+                }}
+                className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-danger/10 hover:text-danger"
+              >
+                <Trash2 className="size-3.5" /> Remove
+              </button>
+              <button type="button" onClick={() => setSelectedConnectionId(null)} className="text-muted-foreground hover:text-foreground" aria-label="Close inspector">
+                <X className="size-4" />
+              </button>
+            </div>
+          </div>
+          <div className="space-y-4 p-4">
+            {(() => {
+              const from = nodes.find((n) => n.id === selectedConnection.from)
+              const to = nodes.find((n) => n.id === selectedConnection.to)
+              return (
+                <div className="space-y-1.5 text-xs text-muted-foreground">
+                  <p className="truncate">From: <span className="text-foreground">{from?.title ?? selectedConnection.from}</span></p>
+                  <p className="truncate">To: <span className="text-foreground">{to?.title ?? selectedConnection.to}</span></p>
+                </div>
+              )
+            })()}
+            <div>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Label</p>
+              <input
+                value={selectedConnection.label}
+                onChange={(e) => {
+                  const label = e.target.value
+                  setConnections((cs) => cs.map((c) => c.id === selectedConnection.id ? { ...c, label } : c))
+                  fetch(`/api/workspace/connections/${selectedConnection.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ label }),
+                  }).catch((err) => console.error(err))
+                }}
+                aria-label="Connection label"
+                className="w-full bg-transparent text-sm font-medium outline-none focus:border-b focus:border-ring"
+              />
+            </div>
           </div>
         </div>
       )}

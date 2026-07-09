@@ -15,7 +15,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useCase } from '@/lib/case-context'
 
-const CASE_CONTEXT_PAGES = ['/workspace', '/evidence', '/timeline', '/entities', '/reports']
+const CASE_CONTEXT_PAGES = ['/workspace', '/evidence', '/timeline', '/events', '/entities', '/reports', '/presentation']
 
 interface NotifItem {
   id: string; title: string; body?: string; case_id?: string; type: string;

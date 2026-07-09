@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowUpRight, Filter } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, X } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { Panel, PriorityBadge, StatusBadge } from '@/components/primitives'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 
 type CaseRow = {
@@ -13,7 +14,7 @@ type CaseRow = {
 }
 
 type RoleFilter = 'all' | 'lead' | 'collaborator' | 'viewer'
-type SortMode = 'newest' | 'oldest'
+type SortMode = 'newest' | 'oldest' | 'az' | 'za'
 
 export default function CasesPage() {
   const [cases, setCases] = useState<CaseRow[]>([])
@@ -43,6 +44,8 @@ export default function CasesPage() {
     if (priorityFilter !== 'all') result = result.filter((c) => c.priority === priorityFilter)
 
     result = [...result].sort((a, b) => {
+      if (sort === 'az') return a.title.localeCompare(b.title)
+      if (sort === 'za') return b.title.localeCompare(a.title)
       const da = new Date(a.created_at).getTime()
       const db = new Date(b.created_at).getTime()
       return sort === 'newest' ? db - da : da - db
@@ -50,6 +53,15 @@ export default function CasesPage() {
 
     return result
   }, [cases, roleFilter, statusFilter, priorityFilter, sort])
+
+  const hasActiveFilters = roleFilter !== 'all' || statusFilter !== 'all' || priorityFilter !== 'all' || sort !== 'newest'
+
+  function clearAllFilters() {
+    setRoleFilter('all')
+    setStatusFilter('all')
+    setPriorityFilter('all')
+    setSort('newest')
+  }
 
   if (loading) {
     return (
@@ -75,25 +87,30 @@ export default function CasesPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 py-3">
-        <Filter className="size-4 text-muted-foreground" />
-
-        <FilterChips label="Role" value={roleFilter} onChange={setRoleFilter as (v: string) => void}
+        <FilterDropdown label="Role" value={roleFilter} onChange={setRoleFilter as (v: string) => void}
           options={[{ value: 'all', label: 'All My Cases' }, { value: 'lead', label: 'Lead' }, { value: 'collaborator', label: 'Collaborator' }, { value: 'viewer', label: 'View Only' }]} />
 
-        <span className="h-5 w-px bg-border" />
-
-        <FilterChips label="Status" value={statusFilter} onChange={setStatusFilter}
+        <FilterDropdown label="Status" value={statusFilter} onChange={setStatusFilter}
           options={[{ value: 'all', label: 'All' }, { value: 'Active', label: 'Active' }, { value: 'Suspended', label: 'Suspended' }, { value: 'Closed', label: 'Closed' }]} />
 
-        <span className="h-5 w-px bg-border" />
-
-        <FilterChips label="Priority" value={priorityFilter} onChange={setPriorityFilter}
+        <FilterDropdown label="Priority" value={priorityFilter} onChange={setPriorityFilter}
           options={[{ value: 'all', label: 'All' }, { value: 'Critical', label: 'Critical' }, { value: 'High', label: 'High' }, { value: 'Medium', label: 'Medium' }, { value: 'Low', label: 'Low' }]} />
 
         <span className="h-5 w-px bg-border" />
 
-        <FilterChips label="Sort" value={sort} onChange={setSort as (v: string) => void}
-          options={[{ value: 'newest', label: 'Newest' }, { value: 'oldest', label: 'Oldest' }]} />
+        <FilterDropdown label="Sort" value={sort} onChange={setSort as (v: string) => void} alwaysShowValue
+          options={[{ value: 'newest', label: 'Newest' }, { value: 'oldest', label: 'Oldest' }, { value: 'az', label: 'A–Z' }, { value: 'za', label: 'Z–A' }]} />
+
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            className="flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            Clear All Filters
+            <X className="size-3.5" aria-hidden />
+          </button>
+        )}
 
         <span className="ml-auto text-xs text-muted-foreground">{filtered.length} case{filtered.length !== 1 ? 's' : ''}</span>
       </div>
@@ -132,20 +149,40 @@ export default function CasesPage() {
   )
 }
 
-function FilterChips({ label, value, onChange, options }: {
+function FilterDropdown({ label, value, onChange, options, alwaysShowValue }: {
   label: string; value: string; onChange: (v: string) => void;
-  options: { value: string; label: string }[]
+  options: { value: string; label: string }[]; alwaysShowValue?: boolean
 }) {
+  const isDefault = value === options[0].value
+  const selected = options.find((o) => o.value === value)
+  const isActive = !alwaysShowValue && !isDefault
+
   return (
-    <div className="flex items-center gap-1">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
-      {options.map((o) => (
-        <button key={o.value} type="button" onClick={() => onChange(o.value)}
-          className={cn('rounded-md px-2 py-0.5 text-xs font-medium transition-colors',
-            value === o.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent')}>
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className={cn(isActive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground')}
+      >
+        {isActive ? (
+          <span
+            onClick={(e) => {
+              e.stopPropagation()
+              onChange(options[0].value)
+            }}
+          >
+            {selected?.label ?? label}
+          </span>
+        ) : (
+          <span>{alwaysShowValue ? (selected?.label ?? label) : label}</span>
+        )}
+        <ChevronDown className="size-3 shrink-0" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        {options.map((o) => (
+          <DropdownMenuItem key={o.value} selected={o.value === value} onClick={() => onChange(o.value)}>
+            {o.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

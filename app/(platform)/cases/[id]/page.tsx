@@ -20,7 +20,9 @@ import {
   SectionTitle,
   StatusBadge,
 } from '@/components/primitives'
+import { InvitationActions } from '@/components/invitation-actions'
 import { db } from '@/lib/db'
+import { getSession } from '@/lib/auth'
 import { fmtDate } from '@/lib/utils'
 import {
   getCase,
@@ -47,6 +49,17 @@ export default async function CaseDetailPage({
 
   const investigation = rows[0]
   if (!investigation) notFound()
+
+  const session = await getSession()
+  const userId = session?.id as string | undefined
+  let pendingInvitation: { id: string; type: string; role: string | null } | null = null
+  if (userId) {
+    const { rows: invRows } = await db.query<{ id: string; type: string; role: string | null }>(
+      `SELECT id, type, role FROM case_invitations WHERE case_id = $1 AND invitee_id = $2 AND status = 'pending'`,
+      [id, userId],
+    )
+    pendingInvitation = invRows[0] ?? null
+  }
 
   const { rows: members } = await db.query(
     `SELECT cm.*, u.full_name, u.username
@@ -114,6 +127,20 @@ export default async function CaseDetailPage({
           </div>
         }
       />
+
+      {pendingInvitation && (
+        <div className="mx-6 mt-5 flex items-center justify-between gap-4 rounded-lg border border-primary/30 bg-primary/5 px-5 py-4">
+          <div>
+            <p className="text-sm font-medium">You&apos;ve been invited to join this case</p>
+            <p className="text-xs text-muted-foreground">
+              {pendingInvitation.type === 'viewer'
+                ? 'View-only access'
+                : `Collaborator${pendingInvitation.role ? ` · ${pendingInvitation.role}` : ''}`}
+            </p>
+          </div>
+          <InvitationActions invitationId={pendingInvitation.id} />
+        </div>
+      )}
 
       <div className="flex items-center gap-2 border-b border-border px-6 py-2.5">
         <span className="font-mono text-xs text-muted-foreground">

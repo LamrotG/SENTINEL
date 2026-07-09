@@ -2,11 +2,10 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Boxes,
-  ChevronLeft,
-  ChevronRight,
+  CalendarClock,
   Clock,
   FileText,
   FolderClosed,
@@ -14,11 +13,14 @@ import {
   LogOut,
   Monitor,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings,
   Shield,
   Workflow,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useResizablePanel } from '@/lib/use-resizable-panel'
 
 const nav = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -26,13 +28,12 @@ const nav = [
   { href: '/workspace', label: 'Workspace', icon: Workflow },
   { href: '/evidence', label: 'Evidence', icon: Boxes },
   { href: '/timeline', label: 'Timeline', icon: Clock },
+  { href: '/events', label: 'Events', icon: CalendarClock },
   { href: '/entities', label: 'Entities', icon: Network },
   { href: '/reports', label: 'Reports', icon: FileText },
-  { href: '/view', label: 'View Mode', icon: Monitor },
+  { href: '/presentation', label: 'Presentation', icon: Monitor },
 ]
 
-const MIN_WIDTH = 200
-const MAX_WIDTH = 400
 const DEFAULT_WIDTH = 240
 const COLLAPSED_WIDTH = 56
 
@@ -40,8 +41,10 @@ export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
 
-  const [collapsed, setCollapsed] = useState(false)
-  const [width, setWidth] = useState(DEFAULT_WIDTH)
+  const { containerRef, currentWidth, collapsed, setCollapsed, startResize } = useResizablePanel({
+    collapsedWidth: COLLAPSED_WIDTH,
+    defaultWidth: DEFAULT_WIDTH,
+  })
   const [accountOpen, setAccountOpen] = useState(false)
   const [sessionUser, setSessionUser] = useState<{ fullName: string; position: string; username: string } | null>(null)
 
@@ -51,33 +54,7 @@ export function Sidebar() {
     }).catch(() => {})
   }, [])
 
-  const isResizing = useRef(false)
-  const sidebarRef = useRef<HTMLElement>(null)
   const accountRef = useRef<HTMLDivElement>(null)
-
-  const startResize = useCallback((e: React.PointerEvent) => {
-    e.preventDefault()
-    isResizing.current = true
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-
-    const onMove = (ev: PointerEvent) => {
-      if (!isResizing.current) return
-      const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, ev.clientX))
-      setWidth(next)
-    }
-
-    const onUp = () => {
-      isResizing.current = false
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-      document.removeEventListener('pointermove', onMove)
-      document.removeEventListener('pointerup', onUp)
-    }
-
-    document.addEventListener('pointermove', onMove)
-    document.addEventListener('pointerup', onUp)
-  }, [])
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -89,12 +66,14 @@ export function Sidebar() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  const currentWidth = collapsed ? COLLAPSED_WIDTH : width
-
   return (
     <aside
-      ref={sidebarRef}
-      className="group/sidebar relative flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 ease-out"
+      ref={containerRef}
+      onClick={() => { if (collapsed) setCollapsed(false) }}
+      className={cn(
+        'group/sidebar relative flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 ease-out',
+        collapsed && 'cursor-pointer',
+      )}
       style={{ width: currentWidth }}
     >
       {/* Header */}
@@ -114,10 +93,31 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-2 scrollbar-thin">
-        {!collapsed && (
-          <p className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Investigation
-          </p>
+        {collapsed ? (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setCollapsed(false) }}
+            title="Expand sidebar"
+            aria-label="Expand sidebar"
+            className="mb-1 flex w-full items-center justify-center rounded-md py-2 text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+          >
+            <PanelLeftOpen className="size-4" aria-hidden />
+          </button>
+        ) : (
+          <div className="flex items-center justify-between px-3 pb-1.5 pt-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Investigation
+            </p>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setCollapsed(true) }}
+              title="Collapse sidebar"
+              aria-label="Collapse sidebar"
+              className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+            >
+              <PanelLeftClose className="size-3.5" aria-hidden />
+            </button>
+          </div>
         )}
         {nav.map((item) => {
           const matchPath = item.match ?? item.href
@@ -131,6 +131,7 @@ export function Sidebar() {
               key={item.label}
               href={item.href}
               title={collapsed ? item.label : undefined}
+              onClick={(e) => e.stopPropagation()}
               className={cn(
                 'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                 collapsed && 'justify-center px-0',
@@ -157,7 +158,7 @@ export function Sidebar() {
       <div className="border-t border-sidebar-border p-2" ref={accountRef}>
         <button
           type="button"
-          onClick={() => setAccountOpen((o) => !o)}
+          onClick={(e) => { e.stopPropagation(); setAccountOpen((o) => !o) }}
           className={cn(
             'flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-sidebar-accent/60',
             collapsed && 'justify-center px-0',
@@ -180,7 +181,7 @@ export function Sidebar() {
           <div className="absolute bottom-16 left-2 right-2 z-50 rounded-md border border-border bg-popover p-1 shadow-lg">
             <Link
               href="/settings"
-              onClick={() => setAccountOpen(false)}
+              onClick={(e) => { e.stopPropagation(); setAccountOpen(false) }}
               className="flex items-center gap-2.5 rounded-sm px-2.5 py-2 text-sm text-popover-foreground transition-colors hover:bg-accent"
             >
               <Settings className="size-4 text-muted-foreground" aria-hidden />
@@ -188,7 +189,8 @@ export function Sidebar() {
             </Link>
             <button
               type="button"
-              onClick={async () => {
+              onClick={async (e) => {
+                e.stopPropagation()
                 setAccountOpen(false)
                 await fetch('/api/auth/logout', { method: 'POST' })
                 router.push('/login')
@@ -202,24 +204,10 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Collapse toggle */}
-      <button
-        type="button"
-        onClick={() => setCollapsed((c) => !c)}
-        className="absolute -right-3 top-17 z-20 flex size-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
-        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-      >
-        {collapsed ? (
-          <ChevronRight className="size-3.5" />
-        ) : (
-          <ChevronLeft className="size-3.5" />
-        )}
-      </button>
-
       {/* Drag resize handle */}
       {!collapsed && (
         <div
-          onPointerDown={startResize}
+          onPointerDown={(e) => { e.stopPropagation(); startResize(e) }}
           className="absolute inset-y-0 -right-1 w-2 cursor-col-resize hover:bg-primary/20 active:bg-primary/30"
         />
       )}
